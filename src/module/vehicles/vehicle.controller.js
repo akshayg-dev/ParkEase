@@ -1,0 +1,17 @@
+import ApiResponse from "../../common/utils/api-response";
+import * as vehicleService from "./vehicle.service";
+
+const getVehicles = async (req, res) => {
+    const vehicles = await vehicleService.getVehicles(req.user.id);
+
+    return ApiResponse.ok(res, "Vehicles retrived successfully", vehicles)
+
+};
+
+const addVehicle = async (req, res) => {
+  const result = await vehicleService.addVehicle(req.user.id, req.body);
+
+  return ApiResponse.created(res, "Vehicle added successfully", result)
+};
+
+export {getVehicles, addVehicle}
