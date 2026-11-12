@@ -30,7 +30,6 @@ const sanitizeUser = (user) => {
 };
 
 // 1. REGISTER
-
 const register = async ({ name, email, password }) => {
   const existing = await User.findOne({ email });
 
@@ -40,22 +39,45 @@ const register = async ({ name, email, password }) => {
 
   const { rawToken, hashedToken } = generateResetToken();
 
-  const user = await User.create({
-    name,
-    email,
-    password,
+  let user;
 
-    verificationToken: hashedToken,
-    verificationTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
-  });
+  try {
+    user = await User.create({
+      name,
+      email,
+      password,
+      verificationToken: hashedToken,
+      verificationTokenExpires: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+  } catch (error) {
+    // Handle concurrent registration requests.
+    if (error.code === 11000) {
+      throw ApiError.conflict('User with this email already exists');
+    }
 
-  await sendVerificationEmail(email, rawToken);
+    throw error;
+  }
 
-  return sanitizeUser(user);
+  let verificationEmailSent = true;
+
+  try {
+    await sendVerificationEmail(email, rawToken);
+  } catch (error) {
+    verificationEmailSent = false;
+    // Log the delivery failure, but never log the raw token.
+    console.error('Verification email delivery failed:', error.message);
+  }
+
+  return {
+    user: sanitizeUser(user),
+    verificationEmailSent,
+    message: verificationEmailSent
+      ? 'Registration successful. Please verify your email.'
+      : 'Registration successful, but the verification email could not be sent. Please request another verification email.',
+  };
 };
 
 // 2. LOGIN
-
 const login = async ({ email, password }) => {
   const user = await User.findOne({ email }).select('+password');
 
@@ -74,12 +96,12 @@ const login = async ({ email, password }) => {
   }
 
   const accessToken = generateAccessToken({
-    id: user._id,
+    id: user._id.toString(),
     role: user.role,
   });
 
   const refreshToken = generateRefreshToken({
-    id: user._id,
+    id: user._id.toString(),
   });
 
   user.refreshToken = hashToken(refreshToken);
@@ -94,13 +116,22 @@ const login = async ({ email, password }) => {
 };
 
 // 3. REFRESH ACCESS TOKEN
-
 const refresh = async (token) => {
   if (!token) {
     throw ApiError.unauthorized('Refresh token missing');
   }
 
-  const decoded = verifyRefreshToken(token);
+  let decoded;
+
+  try {
+    decoded = verifyRefreshToken(token);
+  } catch (error) {
+    throw ApiError.unauthorized('Invalid or expired refresh token');
+  }
+
+  if (!decoded.id) {
+    throw ApiError.unauthorized('Invalid refresh token');
+  }
 
   const user = await User.findById(decoded.id).select('+refreshToken');
 
@@ -109,14 +140,15 @@ const refresh = async (token) => {
   }
 
   const newRefreshToken = generateRefreshToken({
-    id: user._id,
+    id: user._id.toString(),
   });
 
   const accessToken = generateAccessToken({
-    id: user._id,
+    id: user._id.toString(),
     role: user.role,
   });
 
+  // Atomic compare-and-swap: only one request can rotate this token.
   const updatedUser = await User.findOneAndUpdate(
     {
       _id: user._id,
@@ -141,7 +173,6 @@ const refresh = async (token) => {
 };
 
 // 4. LOGOUT
-
 const logout = async (userId) => {
   await User.findByIdAndUpdate(userId, {
     $unset: { refreshToken: 1 },
@@ -149,7 +180,6 @@ const logout = async (userId) => {
 };
 
 // 5. FORGOT PASSWORD
-
 const forgotPassword = async (email) => {
   const genericMessage =
     'If an account exists with this email, a password reset link will be sent.';
@@ -163,20 +193,23 @@ const forgotPassword = async (email) => {
   const { rawToken, hashedToken } = generateResetToken();
 
   user.resetPasswordToken = hashedToken;
-
   user.resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
 
   await user.save();
 
-  await sendPasswordResetEmail(email, rawToken);
+  try {
+    await sendPasswordResetEmail(email, rawToken);
+  } catch (error) {
+    // Do not expose whether the email belongs to an account.
+    console.error('Password reset email delivery failed:', error.message);
+  }
 
   return { message: genericMessage };
 };
 
 // 6. CHANGE PASSWORD (AUTHENTICATED USER)
-
 const newPassword = async (userId, oldPassword, newPassword) => {
-  const user = await User.findById(userId).select('+password');
+  const user = await User.findById(userId).select('+password +refreshToken');
 
   if (!user) {
     throw ApiError.unauthorized('User not found');
@@ -202,10 +235,9 @@ const newPassword = async (userId, oldPassword, newPassword) => {
 };
 
 // 7. RESET PASSWORD (USING EMAIL TOKEN)
-
 const resetPassword = async (resetToken, newPassword) => {
   if (!resetToken) {
-    throw ApiError.unauthorized('Reset password token missing');
+    throw ApiError.badRequest('Reset password token missing');
   }
 
   const hashedToken = hashToken(resetToken);
@@ -213,7 +245,7 @@ const resetPassword = async (resetToken, newPassword) => {
   const user = await User.findOne({
     resetPasswordToken: hashedToken,
     resetPasswordExpires: { $gt: new Date() },
-  });
+  }).select('+password +refreshToken');
 
   if (!user) {
     throw ApiError.unauthorized('Invalid or expired reset token');
@@ -235,7 +267,6 @@ const resetPassword = async (resetToken, newPassword) => {
 };
 
 // 8. VERIFY EMAIL
-
 const verifyEmail = async (token) => {
   if (!token) {
     throw ApiError.badRequest('Verification token missing');
@@ -263,7 +294,6 @@ const verifyEmail = async (token) => {
 };
 
 // 9. GET CURRENT USER
-
 const getMe = async (userId) => {
   const user = await User.findById(userId);
 
