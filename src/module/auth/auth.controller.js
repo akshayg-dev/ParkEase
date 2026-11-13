@@ -11,12 +11,8 @@ const refreshCookieOptions = {
 };
 
 const clearRefreshCookie = (res) => {
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-  });
+  const { maxAge, ...options } = refreshCookieOptions;
+  res.clearCookie('refreshToken', options);
 };
 
 // 1. REGISTER
@@ -70,7 +66,7 @@ const forgotPassword = async (req, res) => {
   ApiResponse.ok(res, result.message);
 };
 
-// 6. CHANGE PASSWORD (AUTHENTICATED USER)
+// 6. CHANGE PASSWORD
 const newPassword = async (req, res) => {
   const result = await authService.newPassword(
     req.user.id,
@@ -85,7 +81,7 @@ const newPassword = async (req, res) => {
   });
 };
 
-// 7. RESET PASSWORD (USING EMAIL TOKEN)
+// 7. RESET PASSWORD
 const resetPassword = async (req, res) => {
   const result = await authService.resetPassword(
     req.body.token,
