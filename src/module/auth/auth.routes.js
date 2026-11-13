@@ -12,9 +12,7 @@ const router = Router();
 
 // Public routes
 router.post('/register', validate(RegisterDto), controller.register);
-
 router.post('/login', validate(LoginDto), controller.login);
-
 router.post('/refresh', controller.refresh);
 
 router.post(
