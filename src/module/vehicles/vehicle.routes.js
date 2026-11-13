@@ -15,4 +15,6 @@ router.post(
   controller.addVehicle,
 );
 
+router.get('/:id', authenticate, controller.getVehicleByID)
+
 export default router;

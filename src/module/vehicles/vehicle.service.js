@@ -1,3 +1,4 @@
+import ApiError from '../../common/utils/api-error.js';
 import Vehicle from './vehicle.model.js';
 
 const getVehicles = async (userId) => {
@@ -16,4 +17,12 @@ const addVehicle = async (userId, userBody) => {
   return vehicle;
 };
 
-export { getVehicles, addVehicle };
+const getVehicleByID = async (userId) => {
+  const vehicle = await Vehicle.findById(userId);
+
+  if (!vehicle) throw ApiError.notFound('You have not added any vehicle');
+
+  return vehicle;
+};
+
+export { getVehicles, addVehicle, getVehicleByID };
