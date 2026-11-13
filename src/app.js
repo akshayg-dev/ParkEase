@@ -5,6 +5,7 @@ import cors from 'cors';
 import authRoutes from './module/auth/auth.routes.js';
 import vehicleRoutes from './module/vehicles/vehicle.routes.js';
 import errorHandler from './common/middleware/error.middleware.js';
+import parkingSlotRoutes from './module/parking-slot/parking-slot.routes.js';
 
 const app = express();
 
@@ -23,6 +24,7 @@ if (process.env.FRONTEND_URL) {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/parking-slots', parkingSlotRoutes);
 
 // 404 handler
 app.use((req, res) => {
