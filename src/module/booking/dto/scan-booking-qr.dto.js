@@ -3,7 +3,7 @@ import z from 'zod';
 
 class ScanBookingQrDto extends BaseDto {
   static schema = z.object({
-    qrToken: z.string().min(1, 'QR token is required'),
+    qrToken: z.string().regex(/^[a-f0-9]{64}$/, 'Invalid QR token'),
     action: z.enum(['ENTRY', 'EXIT']),
   });
 }

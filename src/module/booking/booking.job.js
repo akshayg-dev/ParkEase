@@ -3,24 +3,42 @@ import Booking from './booking.model.js';
 
 const completeExpiredBookings = async () => {
   try {
-    const result = await Booking.updateMany(
+    const now = new Date();
+
+    // Complete expired bookings where the customer is not inside.
+    // These QR tokens are no longer needed.
+    const completedOutside = await Booking.updateMany(
       {
         status: 'CONFIRMED',
-        endTime: { $lte: new Date() },
+        endTime: { $lte: now },
+        $or: [{ entryAt: null }, { exitAt: { $ne: null } }],
       },
       {
-        $set: {
-          status: 'COMPLETED',
-        },
-        $unset: {
-          qrTokenHash: 1,
-        },
+        $set: { status: 'COMPLETED' },
+        $unset: { qrTokenHash: 1 },
       },
     );
 
-    if (result.modifiedCount > 0) {
+    // Complete expired bookings where the customer entered
+    // but has not yet scanned out. Preserve the QR for exit.
+    const completedInside = await Booking.updateMany(
+      {
+        status: 'CONFIRMED',
+        endTime: { $lte: now },
+        entryAt: { $ne: null },
+        exitAt: null,
+      },
+      {
+        $set: { status: 'COMPLETED' },
+      },
+    );
+
+    const totalCompleted =
+      completedOutside.modifiedCount + completedInside.modifiedCount;
+
+    if (totalCompleted > 0) {
       console.log(
-        `[Booking Job] Completed ${result.modifiedCount} expired booking(s)`,
+        `[Booking Job] Completed ${totalCompleted} expired booking(s)`,
       );
     }
   } catch (error) {
@@ -29,10 +47,10 @@ const completeExpiredBookings = async () => {
 };
 
 const startBookingJob = () => {
-  // Run once at startup to process bookings that expired while server was down.
+  // Process expired bookings when the server starts.
   completeExpiredBookings();
 
-  // Then run every minute.
+  // Then check every minute.
   cron.schedule('* * * * *', completeExpiredBookings);
 
   console.log('[Booking Job] Scheduled successfully');

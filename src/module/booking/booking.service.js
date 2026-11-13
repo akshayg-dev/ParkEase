@@ -126,6 +126,7 @@ const cancelBooking = async (userId, bookingId) => {
   }
 
   booking.status = 'CANCELLED';
+  booking.qrTokenHash = undefined;
   await booking.save();
 
   return booking;
@@ -199,12 +200,13 @@ const scanBookingQr = async ({ qrToken, action }) => {
     const booking = await Booking.findOneAndUpdate(
       {
         qrTokenHash: tokenHash,
-        status: 'CONFIRMED',
+        status: { $in: ['CONFIRMED', 'COMPLETED'] },
         entryAt: { $ne: null },
         exitAt: null,
       },
       {
         $set: { exitAt: now },
+        $unset: { qrTokenHash: 1 },
       },
       { new: true },
     );
