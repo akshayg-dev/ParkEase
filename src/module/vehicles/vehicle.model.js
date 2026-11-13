@@ -10,13 +10,14 @@ const vehicleSchema = new mongoose.Schema(
     vehicleNumber: {
       type: String,
       required: true,
-        unique: true,
-        trime: true,
+      unique: true,
+      trim: true,
       uppercase: true,
     },
     vehicleType: {
       type: String,
       enum: ['TWO_WHEELER', 'FOUR_WHEELER'],
+      required: true,
     },
     isDefault: {
       type: Boolean,

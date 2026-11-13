@@ -16,3 +16,6 @@ build/
 
 # Docker local data
 docker-data/
+
+# Testing
+tests/
