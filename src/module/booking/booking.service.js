@@ -2,11 +2,14 @@ import Booking from './booking.model.js';
 import Vehicle from '../vehicles/vehicle.model.js';
 import ParkingSlot from '../parking-slot/parking-slot.model.js';
 import ApiError from '../../common/utils/api-error.js';
+import { randomBytes, createHash } from 'node:crypto';
 
 const HOURLY_RATES = {
   TWO_WHEELER: 20,
   FOUR_WHEELER: 40,
 };
+
+const hashQrToken = (token) => createHash('sha256').update(token).digest('hex');
 
 const createBooking = async (userId, data) => {
   const { vehicleId, parkingSlotId, startTime, endTime } = data;
@@ -128,4 +131,104 @@ const cancelBooking = async (userId, bookingId) => {
   return booking;
 };
 
-export { createBooking, getMyBookings, getBookingById, cancelBooking };
+const generateBookingQr = async (userId, bookingId) => {
+  const booking = await Booking.findOne({
+    _id: bookingId,
+    customer: userId,
+  });
+
+  if (!booking) {
+    throw ApiError.notFound('Booking not found');
+  }
+
+  if (booking.status !== 'CONFIRMED') {
+    throw ApiError.badRequest('QR is only available for confirmed bookings');
+  }
+
+  if (booking.entryAt || booking.exitAt) {
+    throw ApiError.badRequest('QR cannot be regenerated after entry');
+  }
+
+  // Generate a cryptographically secure random token.
+  const qrToken = randomBytes(32).toString('hex');
+
+  // Store only its hash.
+  booking.qrTokenHash = hashQrToken(qrToken);
+  await booking.save();
+
+  return {
+    bookingId: booking._id,
+    qrToken,
+  };
+};
+
+const scanBookingQr = async ({ qrToken, action }) => {
+  const tokenHash = hashQrToken(qrToken);
+  const now = new Date();
+
+  if (action === 'ENTRY') {
+    // Entry is allowed only during the confirmed booking period.
+    const booking = await Booking.findOneAndUpdate(
+      {
+        qrTokenHash: tokenHash,
+        status: 'CONFIRMED',
+        entryAt: null,
+        exitAt: null,
+        startTime: { $lte: now },
+        endTime: { $gte: now },
+      },
+      {
+        $set: { entryAt: now },
+      },
+      { new: true },
+    );
+
+    if (!booking) {
+      throw ApiError.badRequest(
+        'Invalid QR, booking not eligible for entry, or entry already recorded',
+      );
+    }
+
+    return {
+      action: 'ENTRY',
+      booking,
+    };
+  }
+
+  if (action === 'EXIT') {
+    const booking = await Booking.findOneAndUpdate(
+      {
+        qrTokenHash: tokenHash,
+        status: 'CONFIRMED',
+        entryAt: { $ne: null },
+        exitAt: null,
+      },
+      {
+        $set: { exitAt: now },
+      },
+      { new: true },
+    );
+
+    if (!booking) {
+      throw ApiError.badRequest(
+        'Invalid QR, entry not recorded, or exit already recorded',
+      );
+    }
+
+    return {
+      action: 'EXIT',
+      booking,
+    };
+  }
+
+  throw ApiError.badRequest('Invalid scan action');
+};
+
+export default {
+  createBooking,
+  getMyBookings,
+  getBookingById,
+  cancelBooking,
+  generateBookingQr,
+  scanBookingQr,
+};

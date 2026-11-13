@@ -31,4 +31,38 @@ const cancelBooking = async (req, res) => {
   return ApiResponse.ok(res, 'Booking cancelled successfully', { booking });
 };
 
-export { createBooking, getMyBookings, getBookingById, cancelBooking };
+const generateBookingQr = async (req, res, next) => {
+  try {
+    const result = await bookingService.generateBookingQr(
+      req.user.id,
+      req.params.id,
+    );
+
+    return ApiResponse.ok(res, 'Booking QR generated successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const scanBookingQr = async (req, res, next) => {
+  try {
+    const result = await bookingService.scanBookingQr(req.body);
+
+    return ApiResponse.ok(
+      res,
+      `Booking ${result.action.toLowerCase()} recorded successfully`,
+      { booking: result.booking },
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export {
+  createBooking,
+  getMyBookings,
+  getBookingById,
+  cancelBooking,
+  generateBookingQr,
+  scanBookingQr,
+};

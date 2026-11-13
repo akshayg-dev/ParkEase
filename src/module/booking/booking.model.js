@@ -62,6 +62,11 @@ const bookingSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    qrTokenHash: {
+      type: String,
+      select: false,
+    },
   },
   { timestamps: true },
 );
