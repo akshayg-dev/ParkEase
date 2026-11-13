@@ -32,4 +32,10 @@ router.patch(
   parkingSlotController.updateSlot,
 );
 
+router.get(
+  '/availability',
+  authenticate,
+  parkingSlotController.getAvailableSlots,
+);
+
 export default router;

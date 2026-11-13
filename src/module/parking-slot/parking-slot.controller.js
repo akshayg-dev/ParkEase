@@ -45,9 +45,24 @@ const updateSlot = async (req, res, next) => {
   }
 };
 
+const getAvailableSlots = async (req, res, next) => {
+  try {
+    const slots = await parkingSlotService.getAvailableSlots(req.query);
+
+    return ApiResponse.ok(
+      res,
+      'Available parking slots retrieved successfully',
+      { slots },
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   createSlot,
   getSlots,
   getSlotById,
   updateSlot,
+  getAvailableSlots,
 };
