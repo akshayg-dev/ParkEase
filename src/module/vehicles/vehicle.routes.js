@@ -6,10 +6,10 @@ import CreateVehicleDto from './dto/create-vehicle.dto.js';
 
 const router = Router();
 
-router.get('/vehicles', authenticate, controller.getVehicles);
+router.get('/', authenticate, controller.getVehicles);
 
 router.post(
-  '/vehicles',
+  '/',
   authenticate,
   validate(CreateVehicleDto),
   controller.addVehicle,
