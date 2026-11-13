@@ -73,5 +73,6 @@ const bookingSchema = new mongoose.Schema(
 
 bookingSchema.index({ parkingSlot: 1, startTime: 1, endTime: 1 });
 bookingSchema.index({ customer: 1, createdAt: -1 });
+bookingSchema.index({ status: 1, endTime: 1 });
 
 export default mongoose.model('Booking', bookingSchema);
