@@ -1,5 +1,5 @@
-import ApiResponse from "../../common/utils/api-response";
-import * as vehicleService from "./vehicle.service";
+import ApiResponse from "../../common/utils/api-response.js";
+import * as vehicleService from "./vehicle.service.js";
 
 const getVehicles = async (req, res) => {
     const vehicles = await vehicleService.getVehicles(req.user.id);
