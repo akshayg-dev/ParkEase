@@ -1,3 +1,18 @@
-.env
+# Dependencies
 node_modules/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
 *.log
+
+# Build files
+dist/
+build/
+
+# Docker local data
+docker-data/
