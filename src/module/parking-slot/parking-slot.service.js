@@ -1,6 +1,7 @@
 import ParkingSlot from './parking-slot.model.js';
 import Booking from '../booking/booking.model.js';
 import ApiError from '../../common/utils/api-error.js';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
 
 const createSlot = async (data) => {
   try {

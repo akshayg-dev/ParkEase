@@ -17,8 +17,19 @@ const createBooking = async (userId, data) => {
   // 1. Validate booking time
   const now = new Date();
 
-  if (startTime < now) {
-    throw ApiError.badRequest('Booking start time cannot be in the past');
+  if (startTime <= now) {
+    throw ApiError.badRequest('Booking start time must be in the future');
+  }
+
+  if (endTime <= startTime) {
+    throw ApiError.badRequest('End time must be after start time');
+  }
+
+  const durationMs = endTime - startTime;
+  const durationHours = Math.ceil(durationMs / (1000 * 60 * 60));
+
+  if (durationHours < 1) {
+    throw ApiError.badRequest('Minimum booking duration is 1 hour');
   }
 
   // 2. Verify vehicle ownership
@@ -31,58 +42,95 @@ const createBooking = async (userId, data) => {
     throw ApiError.notFound('Vehicle not found');
   }
 
-  // 3. Verify parking slot
-  const slot = await ParkingSlot.findById(parkingSlotId);
+  // 3. Acquire an atomic lock on the parking slot
+  const lockToken = randomUUID();
+  const lockTime = new Date();
+  const lockExpiry = new Date(lockTime.getTime() + 2 * 60 * 1000);
+
+  const slot = await ParkingSlot.findOneAndUpdate(
+    {
+      _id: parkingSlotId,
+      status: 'ACTIVE',
+      $or: [
+        { bookingLockUntil: null },
+        { bookingLockUntil: { $lte: lockTime } },
+      ],
+    },
+    {
+      $set: {
+        bookingLockToken: lockToken,
+        bookingLockUntil: lockExpiry,
+      },
+    },
+    { new: true },
+  );
 
   if (!slot) {
-    throw ApiError.notFound('Parking slot not found');
+    const existingSlot = await ParkingSlot.findById(parkingSlotId);
+
+    if (!existingSlot) {
+      throw ApiError.notFound('Parking slot not found');
+    }
+
+    if (existingSlot.status !== 'ACTIVE') {
+      throw ApiError.badRequest('Parking slot is not active');
+    }
+
+    throw ApiError.conflict(
+      'Parking slot is currently processing another booking. Try again.',
+    );
   }
 
-  if (slot.status !== 'ACTIVE') {
-    throw ApiError.badRequest('Parking slot is not active');
+  try {
+    // 4. Verify vehicle and slot compatibility
+    if (vehicle.vehicleType !== slot.vehicleType) {
+      throw ApiError.badRequest('Vehicle type does not match the parking slot');
+    }
+
+    // 5. Calculate price
+    const pricePerHour = HOURLY_RATES[vehicle.vehicleType];
+    const totalPrice = durationHours * pricePerHour;
+
+    // 6. Check overlapping confirmed bookings
+    const overlappingBooking = await Booking.findOne({
+      parkingSlot: parkingSlotId,
+      status: 'CONFIRMED',
+      startTime: { $lt: endTime },
+      endTime: { $gt: startTime },
+    });
+
+    if (overlappingBooking) {
+      throw ApiError.conflict('Parking slot is already booked for this time');
+    }
+
+    // 7. Create booking
+    const booking = await Booking.create({
+      customer: userId,
+      vehicle: vehicleId,
+      parkingSlot: parkingSlotId,
+      startTime,
+      endTime,
+      durationHours,
+      pricePerHour,
+      totalPrice,
+    });
+
+    return booking;
+  } finally {
+    // 8. Always release our own lock
+    await ParkingSlot.updateOne(
+      {
+        _id: parkingSlotId,
+        bookingLockToken: lockToken,
+      },
+      {
+        $unset: {
+          bookingLockToken: 1,
+          bookingLockUntil: 1,
+        },
+      },
+    );
   }
-
-  // 4. Verify vehicle and slot compatibility
-  if (vehicle.vehicleType !== slot.vehicleType) {
-    throw ApiError.badRequest('Vehicle type does not match the parking slot');
-  }
-
-  // 5. Calculate price
-  const durationMs = endTime - startTime;
-  const durationHours = Math.ceil(durationMs / (1000 * 60 * 60));
-
-  if (durationHours < 1) {
-    throw ApiError.badRequest('Minimum booking duration is 1 hour');
-  }
-
-  const pricePerHour = HOURLY_RATES[vehicle.vehicleType];
-  const totalPrice = durationHours * pricePerHour;
-
-  // 6. Check overlapping confirmed bookings
-  const overlappingBooking = await Booking.findOne({
-    parkingSlot: parkingSlotId,
-    status: 'CONFIRMED',
-    startTime: { $lt: endTime },
-    endTime: { $gt: startTime },
-  });
-
-  if (overlappingBooking) {
-    throw ApiError.conflict('Parking slot is already booked for this time');
-  }
-
-  // 7. Create booking
-  const booking = await Booking.create({
-    customer: userId,
-    vehicle: vehicleId,
-    parkingSlot: parkingSlotId,
-    startTime,
-    endTime,
-    durationHours,
-    pricePerHour,
-    totalPrice,
-  });
-
-  return booking;
 };
 
 const getMyBookings = async (userId) => {

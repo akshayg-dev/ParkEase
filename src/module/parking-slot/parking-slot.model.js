@@ -22,6 +22,17 @@ const parkingSlotSchema = new mongoose.Schema(
       default: 'ACTIVE',
       required: true,
     },
+
+    bookingLockToken: {
+      type: String,
+      select: false,
+    },
+
+    bookingLockUntil: {
+      type: Date,
+      default: null,
+      select: false,
+    },
   },
   { timestamps: true },
 );
