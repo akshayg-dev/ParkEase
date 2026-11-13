@@ -7,6 +7,7 @@ import vehicleRoutes from './module/vehicles/vehicle.routes.js';
 import errorHandler from './common/middleware/error.middleware.js';
 import parkingSlotRoutes from './module/parking-slot/parking-slot.routes.js';
 import bookingRoutes from './module/booking/booking.routes.js';
+import adminRoutes from './module/admin/admin.routes.js';
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/parking-slots', parkingSlotRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {

@@ -1,4 +1,4 @@
-import * as bookingService from './booking.service.js';
+import bookingService from './booking.service.js';
 import ApiResponse from '../../common/utils/api-response.js';
 
 const createBooking = async (req, res) => {
