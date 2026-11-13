@@ -2,7 +2,7 @@ import Booking from './booking.model.js';
 import Vehicle from '../vehicles/vehicle.model.js';
 import ParkingSlot from '../parking-slot/parking-slot.model.js';
 import ApiError from '../../common/utils/api-error.js';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
 
 const HOURLY_RATES = {
   TWO_WHEELER: 20,
@@ -274,6 +274,87 @@ const scanBookingQr = async ({ qrToken, action }) => {
   throw ApiError.badRequest('Invalid scan action');
 };
 
+const getAllBookings = async (filters = {}) => {
+  const { status, startDate, endDate, page = 1, limit = 10 } = filters;
+
+  const query = {};
+
+  // Filter by booking status
+  if (status) {
+    if (!['CONFIRMED', 'CANCELLED', 'COMPLETED'].includes(status)) {
+      throw ApiError.badRequest('Invalid booking status');
+    }
+
+    query.status = status;
+  }
+
+  // Filter bookings by their start time
+  if (startDate || endDate) {
+    query.startTime = {};
+
+    if (startDate) {
+      const from = new Date(startDate);
+
+      if (Number.isNaN(from.getTime())) {
+        throw ApiError.badRequest('Invalid start date');
+      }
+
+      query.startTime.$gte = from;
+    }
+
+    if (endDate) {
+      const to = new Date(endDate);
+
+      if (Number.isNaN(to.getTime())) {
+        throw ApiError.badRequest('Invalid end date');
+      }
+
+      // Include the entire end date
+      to.setUTCHours(23, 59, 59, 999);
+      query.startTime.$lte = to;
+    }
+  }
+
+  const currentPage = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
+  const skip = (currentPage - 1) * pageSize;
+
+  const [bookings, total] = await Promise.all([
+    Booking.find(query)
+      .populate('customer', 'name email')
+      .populate('vehicle', 'vehicleNumber vehicleType')
+      .populate('parkingSlot', 'slotNumber vehicleType')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize),
+
+    Booking.countDocuments(query),
+  ]);
+
+  return {
+    bookings,
+    pagination: {
+      total,
+      page: currentPage,
+      limit: pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    },
+  };
+};
+
+const getAdminBookingById = async (bookingId) => {
+  const booking = await Booking.findById(bookingId)
+    .populate('customer', 'name email')
+    .populate('vehicle', 'vehicleNumber vehicleType')
+    .populate('parkingSlot', 'slotNumber vehicleType');
+
+  if (!booking) {
+    throw ApiError.notFound('Booking not found');
+  }
+
+  return booking;
+};
+
 export default {
   createBooking,
   getMyBookings,
@@ -281,4 +362,6 @@ export default {
   cancelBooking,
   generateBookingQr,
   scanBookingQr,
+  getAllBookings,
+  getAdminBookingById,
 };

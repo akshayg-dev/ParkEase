@@ -58,6 +58,26 @@ const scanBookingQr = async (req, res, next) => {
   }
 };
 
+const getAllBookings = async (req, res, next) => {
+  try {
+    const result = await bookingService.getAllBookings(req.query);
+
+    return ApiResponse.ok(res, 'All bookings retrieved successfully', result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getAdminBookingById = async (req, res, next) => {
+  try {
+    const booking = await bookingService.getAdminBookingById(req.params.id);
+
+    return ApiResponse.ok(res, 'Booking retrieved successfully', { booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   createBooking,
   getMyBookings,
@@ -65,4 +85,6 @@ export {
   cancelBooking,
   generateBookingQr,
   scanBookingQr,
+  getAllBookings,
+  getAdminBookingById,
 };

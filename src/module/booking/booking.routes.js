@@ -31,4 +31,17 @@ router.post(
   bookingController.scanBookingQr,
 );
 
+// Admin: view and manage all bookings
+router.get(
+  '/admin',
+  authorizeAdmin,
+  bookingController.getAllBookings,
+);
+
+router.get(
+  '/admin/:id',
+  authorizeAdmin,
+  bookingController.getAdminBookingById,
+);
+
 export default router;
