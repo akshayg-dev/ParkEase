@@ -1,5 +1,5 @@
 import z from 'zod';
-import BaseDto from '../../../common/dto/base.dto';
+import BaseDto from '../../../common/dto/base.dto.js';
 
 class RegisterDto extends BaseDto {
   static schema = z.object({
