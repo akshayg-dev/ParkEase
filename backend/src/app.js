@@ -11,15 +11,17 @@ import adminRoutes from './module/admin/admin.routes.js';
 
 const app = express();
 
+// Allowed frontend origins (supports comma-separated URLs)
 const allowedOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
-  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
   .filter(Boolean);
 
+// CORS configuration
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ''))) {
         return callback(null, true);
       }
 
@@ -31,9 +33,11 @@ app.use(
   }),
 );
 
+// Middleware
 app.use(express.json());
 app.use(cookieParser());
 
+// API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/parking-slots', parkingSlotRoutes);
@@ -48,7 +52,7 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler must be last.
+// Global error handler (must be last)
 app.use(errorHandler);
 
 export default app;
