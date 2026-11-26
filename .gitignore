@@ -1,21 +1,25 @@
 # Dependencies
-node_modules/
+**/node_modules/
 
 # Environment variables
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 
 # Logs
-logs/
-*.log
+**/logs/
+**/*.log
 
 # Build files
-dist/
-build/
-
-# Docker local data
-docker-data/
+**/dist/
+**/build/
 
 # Testing
-tests/
+**/coverage/
+
+# Docker local data
+**/docker-data/
+
+# OS / Editor
+.DS_Store
+.vscode/
