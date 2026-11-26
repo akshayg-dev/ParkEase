@@ -3,8 +3,15 @@ import { cn } from '@/utils/format'
 /**
  * Spinner — minimal accessible loading indicator.
  *
+ * Uses ParkEase brand colors:
+ *   track  → navy-100  (#dce6f0)
+ *   accent → emerald-600 (#087f5b)
+ *
+ * Respects `prefers-reduced-motion` via Tailwind's motion-reduce variant.
+ *
  * @param {'sm'|'md'|'lg'} [size='md']
- * @param {string} [label='Loading…']
+ * @param {string}         [label='Loading…']
+ * @param {string}         [className]
  */
 export function Spinner({ size = 'md', label = 'Loading…', className }) {
   const sizes = {
@@ -17,7 +24,7 @@ export function Spinner({ size = 'md', label = 'Loading…', className }) {
     <span role="status" aria-label={label} className={cn('inline-flex', className)}>
       <span
         className={cn(
-          'rounded-full border-navy-200 border-t-navy-800 animate-spin',
+          'rounded-full border-navy-100 border-t-emerald-600 animate-spin motion-reduce:animate-none',
           sizes[size],
         )}
       />
@@ -28,6 +35,7 @@ export function Spinner({ size = 'md', label = 'Loading…', className }) {
 
 /**
  * PageLoader — full-screen centered loading state.
+ * Used in route guards and top-level async boundaries.
  */
 export function PageLoader({ label = 'Loading…' }) {
   return (

@@ -49,9 +49,11 @@ export function LoginPage() {
         password: form.password,
       })
 
-      if (loggedInUser?.role === 'customer') {
-        const from = location.state?.from?.pathname
-        navigate(from ?? '/dashboard', { replace: true })
+      const from = location.state?.from?.pathname
+      if (loggedInUser?.role === 'admin') {
+        navigate(from?.startsWith('/admin') ? from : '/admin', { replace: true })
+      } else if (loggedInUser?.role === 'customer') {
+        navigate(from?.startsWith('/dashboard') ? from : '/dashboard', { replace: true })
       } else {
         navigate('/', { replace: true })
       }

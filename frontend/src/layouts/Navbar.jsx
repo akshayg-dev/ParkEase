@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { ParkingSquare } from 'lucide-react'
+import { ParkEaseLogo } from '@/components/ParkEaseLogo'
 import { cn } from '@/utils/format'
 
 const NAV_LINKS = [
@@ -14,16 +14,8 @@ export function Navbar() {
     <header className="sticky top-0 z-40 h-14 bg-white border-b border-border">
       <div className="h-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-8">
         {/* Wordmark */}
-        <NavLink
-          to="/"
-          className="flex items-center gap-2 text-navy-900 shrink-0"
-        >
-          <span className="flex items-center justify-center size-8 rounded-md bg-navy-800 text-white">
-            <ParkingSquare size={16} strokeWidth={2} />
-          </span>
-          <span className="font-display font-700 text-[0.9375rem] tracking-tight font-bold">
-            ParkEase
-          </span>
+        <NavLink to="/" className="inline-flex items-center shrink-0">
+          <ParkEaseLogo variant="full" theme="light" size="md" />
         </NavLink>
 
         {/* Primary nav */}

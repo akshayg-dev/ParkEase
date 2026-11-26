@@ -1,16 +1,22 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { LogOut, ParkingSquare } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { PageLoader } from '@/components/Spinner'
-import { Card } from '@/components/Card'
-import { Button } from '@/components/Button'
 
 /**
  * Resolve the default landing route for an authenticated user based on role.
- * Admin routing is reserved for a later phase and stays separate from /dashboard.
  */
 function getDefaultRouteForRole(role) {
-  return role === 'customer' ? '/dashboard' : '/'
+  if (role === 'admin') return '/admin'
+  if (role === 'customer') return '/dashboard'
+  return '/'
+}
+
+function getSafeRedirectTarget(role, fromPathname) {
+  const fallback = getDefaultRouteForRole(role)
+  if (!fromPathname) return fallback
+  if (role === 'admin' && fromPathname.startsWith('/admin')) return fromPathname
+  if (role === 'customer' && fromPathname.startsWith('/dashboard')) return fromPathname
+  return fallback
 }
 
 /**
@@ -24,15 +30,8 @@ export function GuestGuard() {
   if (isLoading) return <PageLoader label="Checking session…" />
 
   if (isAuthenticated) {
-    const defaultRoute = getDefaultRouteForRole(user?.role)
-    const from = location.state?.from?.pathname
-
-    // Keep admin users separate from the customer dashboard
-    if (user?.role !== 'customer') {
-      return <Navigate to={defaultRoute} replace />
-    }
-
-    return <Navigate to={from ?? defaultRoute} replace />
+    const target = getSafeRedirectTarget(user?.role, location.state?.from?.pathname)
+    return <Navigate to={target} replace />
   }
 
   return <Outlet />
@@ -57,8 +56,7 @@ export function AuthGuard() {
 
 /**
  * CustomerGuard — allows only authenticated users with role === 'customer'.
- * Unauthenticated users go to /login; non-customer users (e.g. admin) stay
- * separated from the customer dashboard.
+ * Unauthenticated users go to /login; admins are directed to /admin.
  */
 export function CustomerGuard() {
   const { user, isAuthenticated, isLoading } = useAuth()
@@ -71,20 +69,41 @@ export function CustomerGuard() {
   }
 
   if (user?.role !== 'customer') {
-    return <Navigate to="/" replace />
+    return <Navigate to={getDefaultRouteForRole(user?.role)} replace />
   }
 
   return <Outlet />
 }
 
 /**
- * RootEntry — replaces the temporary Phase 1 home page:
+ * AdminGuard — allows only authenticated users with role === 'admin'.
+ * Unauthenticated users go to /login; customers are directed to /dashboard.
+ */
+export function AdminGuard() {
+  const { user, isAuthenticated, isLoading } = useAuth()
+  const location = useLocation()
+
+  if (isLoading) return <PageLoader label="Checking session…" />
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  if (user?.role !== 'admin') {
+    return <Navigate to={getDefaultRouteForRole(user?.role)} replace />
+  }
+
+  return <Outlet />
+}
+
+/**
+ * RootEntry — routes visitors by authentication and role:
  *  - Unauthenticated visitors → /login
  *  - Authenticated customers  → /dashboard
- *  - Authenticated admins     → minimal holding view (admin dashboard comes later)
+ *  - Authenticated admins     → /admin
  */
 export function RootEntry() {
-  const { user, isAuthenticated, isLoading, logout } = useAuth()
+  const { user, isAuthenticated, isLoading } = useAuth()
 
   if (isLoading) return <PageLoader label="Checking session…" />
 
@@ -92,34 +111,5 @@ export function RootEntry() {
     return <Navigate to="/login" replace />
   }
 
-  if (user?.role === 'customer') {
-    return <Navigate to="/dashboard" replace />
-  }
-
-  return (
-    <div className="min-h-svh bg-surface-subtle flex items-center justify-center p-4">
-      <Card className="w-full max-w-md text-center flex flex-col items-center gap-4">
-        <span className="flex items-center justify-center size-10 rounded-lg bg-navy-800 text-white">
-          <ParkingSquare size={20} strokeWidth={1.75} />
-        </span>
-        <div>
-          <h1 className="text-lg font-bold font-display text-navy-900">
-            Admin workspace pending
-          </h1>
-          <p className="mt-1.5 text-sm text-text-secondary">
-            Signed in as <span className="font-medium text-text-primary">{user?.email}</span>.
-            The admin dashboard will be built in the next phase.
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          size="md"
-          leftIcon={<LogOut />}
-          onClick={() => logout()}
-        >
-          Sign out
-        </Button>
-      </Card>
-    </div>
-  )
+  return <Navigate to={getDefaultRouteForRole(user?.role)} replace />
 }

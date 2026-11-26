@@ -56,4 +56,5 @@ const startBookingJob = () => {
   console.log('[Booking Job] Scheduled successfully');
 };
 
+export { completeExpiredBookings };
 export default startBookingJob;

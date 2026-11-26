@@ -169,6 +169,10 @@ const cancelBooking = async (userId, bookingId) => {
     throw ApiError.badRequest('Only confirmed bookings can be cancelled');
   }
 
+  if (booking.entryAt || (booking.gateSessions && booking.gateSessions.length > 0)) {
+    throw ApiError.badRequest('A booking cannot be cancelled after entry');
+  }
+
   if (booking.startTime <= new Date()) {
     throw ApiError.badRequest('A booking cannot be cancelled after it starts');
   }
@@ -181,29 +185,66 @@ const cancelBooking = async (userId, bookingId) => {
 };
 
 const generateBookingQr = async (userId, bookingId) => {
-  const booking = await Booking.findOne({
-    _id: bookingId,
-    customer: userId,
-  });
-
-  if (!booking) {
-    throw ApiError.notFound('Booking not found');
-  }
-
-  if (booking.status !== 'CONFIRMED') {
-    throw ApiError.badRequest('QR is only available for confirmed bookings');
-  }
-
-  if (booking.entryAt || booking.exitAt) {
-    throw ApiError.badRequest('QR cannot be regenerated after entry');
-  }
-
   // Generate a cryptographically secure random token.
   const qrToken = randomBytes(32).toString('hex');
+  const tokenHash = hashQrToken(qrToken);
+  const now = new Date();
 
-  // Store only its hash.
-  booking.qrTokenHash = hashQrToken(qrToken);
-  await booking.save();
+  // Atomically replace qrTokenHash when booking can legitimately present a QR:
+  // 1) Confirmed booking before endTime (pre-entry Entry QR or retained Re-entry QR)
+  // 2) Currently checked-in booking (CONFIRMED or COMPLETED while inside) awaiting Exit QR
+  const booking = await Booking.findOneAndUpdate(
+    {
+      _id: bookingId,
+      customer: userId,
+      $or: [
+        // Checked in (inside) — Exit QR allowed even past endTime
+        {
+          status: { $in: ['CONFIRMED', 'COMPLETED'] },
+          entryAt: { $ne: null },
+          exitAt: null,
+        },
+        // Pre-entry or exited-with-retention — Entry / Re-entry QR allowed before endTime
+        {
+          status: 'CONFIRMED',
+          endTime: { $gt: now },
+        },
+      ],
+    },
+    {
+      $set: { qrTokenHash: tokenHash },
+    },
+    { new: true },
+  );
+
+  if (!booking) {
+    const existing = await Booking.findOne({
+      _id: bookingId,
+      customer: userId,
+    });
+
+    if (!existing) {
+      throw ApiError.notFound('Booking not found');
+    }
+
+    if (existing.status === 'EARLY_RELEASED') {
+      throw ApiError.badRequest(
+        'QR is no longer available after releasing the reservation',
+      );
+    }
+
+    if (existing.status === 'CANCELLED') {
+      throw ApiError.badRequest('QR is not available for cancelled bookings');
+    }
+
+    if (existing.status === 'COMPLETED' || existing.endTime <= now) {
+      throw ApiError.badRequest('QR is no longer available for completed bookings');
+    }
+
+    throw ApiError.badRequest(
+      'QR is only available for confirmed or checked-in bookings',
+    );
+  }
 
   return {
     bookingId: booking._id,
@@ -216,25 +257,37 @@ const scanBookingQr = async ({ qrToken, action }) => {
   const now = new Date();
 
   if (action === 'ENTRY') {
-    // Entry is allowed only during the confirmed booking period.
+    // Entry / re-entry is allowed when confirmed, within scheduled window,
+    // and NOT currently inside (either never entered or previously exited).
     const booking = await Booking.findOneAndUpdate(
       {
         qrTokenHash: tokenHash,
         status: 'CONFIRMED',
-        entryAt: null,
-        exitAt: null,
         startTime: { $lte: now },
-        endTime: { $gte: now },
+        endTime: { $gt: now },
+        $or: [{ entryAt: null }, { exitAt: { $ne: null } }],
       },
       {
-        $set: { entryAt: now },
+        $set: {
+          entryAt: now,
+          exitAt: null,
+        },
+        $push: {
+          gateSessions: {
+            entryAt: now,
+            exitAt: null,
+          },
+        },
       },
       { new: true },
-    );
+    )
+      .populate('customer', 'name email')
+      .populate('vehicle', 'vehicleNumber vehicleType')
+      .populate('parkingSlot', 'slotNumber vehicleType');
 
     if (!booking) {
       throw ApiError.badRequest(
-        'Invalid QR, booking not eligible for entry, or entry already recorded',
+        'Invalid QR, booking already checked in, or outside the scheduled booking window',
       );
     }
 
@@ -245,7 +298,8 @@ const scanBookingQr = async ({ qrToken, action }) => {
   }
 
   if (action === 'EXIT') {
-    const booking = await Booking.findOneAndUpdate(
+    // Atomically claim the active inside session (exitAt === null).
+    const claimed = await Booking.findOneAndUpdate(
       {
         qrTokenHash: tokenHash,
         status: { $in: ['CONFIRMED', 'COMPLETED'] },
@@ -254,24 +308,108 @@ const scanBookingQr = async ({ qrToken, action }) => {
       },
       {
         $set: { exitAt: now },
-        $unset: { qrTokenHash: 1 },
       },
       { new: true },
-    );
+    ).select('+qrTokenHash');
 
-    if (!booking) {
+    if (!claimed) {
       throw ApiError.badRequest(
         'Invalid QR, entry not recorded, or exit already recorded',
       );
     }
 
+    // Close the open gateSession entry (or backfill for legacy bookings without gateSessions).
+    const sessions = Array.isArray(claimed.gateSessions)
+      ? claimed.gateSessions
+      : [];
+    const openIndex = [...sessions]
+      .reverse()
+      .findIndex((session) => !session.exitAt);
+
+    if (openIndex !== -1) {
+      const targetIndex = sessions.length - 1 - openIndex;
+      sessions[targetIndex].exitAt = now;
+    } else if (claimed.entryAt) {
+      sessions.push({ entryAt: claimed.entryAt, exitAt: now });
+    }
+    claimed.gateSessions = sessions;
+
+    const isEarlyExit =
+      claimed.status === 'CONFIRMED' && now < claimed.endTime;
+
+    if (!isEarlyExit) {
+      claimed.status = 'COMPLETED';
+      claimed.qrTokenHash = undefined;
+    }
+
+    await claimed.save();
+
+    const populated = await Booking.findById(claimed._id)
+      .populate('customer', 'name email')
+      .populate('vehicle', 'vehicleNumber vehicleType')
+      .populate('parkingSlot', 'slotNumber vehicleType');
+
     return {
       action: 'EXIT',
-      booking,
+      isEarlyExit,
+      booking: populated,
     };
   }
 
   throw ApiError.badRequest('Invalid scan action');
+};
+
+const releaseBookingEarly = async (bookingId) => {
+  const now = new Date();
+
+  const released = await Booking.findOneAndUpdate(
+    {
+      _id: bookingId,
+      status: 'CONFIRMED',
+      entryAt: { $ne: null },
+      exitAt: { $ne: null },
+      endTime: { $gt: now },
+    },
+    {
+      $set: {
+        status: 'EARLY_RELEASED',
+        releasedAt: now,
+      },
+      $unset: {
+        qrTokenHash: 1,
+      },
+    },
+    { new: true },
+  )
+    .populate('customer', 'name email')
+    .populate('vehicle', 'vehicleNumber vehicleType')
+    .populate('parkingSlot', 'slotNumber vehicleType');
+
+  if (!released) {
+    const existing = await Booking.findById(bookingId);
+
+    if (!existing) {
+      throw ApiError.notFound('Booking not found');
+    }
+
+    if (existing.status === 'EARLY_RELEASED') {
+      throw ApiError.badRequest('Booking reservation has already been released');
+    }
+
+    if (existing.status !== 'CONFIRMED') {
+      throw ApiError.badRequest('Only confirmed bookings can be released early');
+    }
+
+    if (!existing.entryAt || !existing.exitAt) {
+      throw ApiError.badRequest(
+        'Booking must be exited before releasing the remaining reservation',
+      );
+    }
+
+    throw ApiError.badRequest('Booking period has already ended');
+  }
+
+  return released;
 };
 
 const getAllBookings = async (filters = {}) => {
@@ -281,7 +419,11 @@ const getAllBookings = async (filters = {}) => {
 
   // Filter by booking status
   if (status) {
-    if (!['CONFIRMED', 'CANCELLED', 'COMPLETED'].includes(status)) {
+    if (
+      !['CONFIRMED', 'CANCELLED', 'COMPLETED', 'EARLY_RELEASED'].includes(
+        status,
+      )
+    ) {
       throw ApiError.badRequest('Invalid booking status');
     }
 
@@ -355,6 +497,113 @@ const getAdminBookingById = async (bookingId) => {
   return booking;
 };
 
+const reassignBooking = async (bookingId, targetSlotId) => {
+  const booking = await Booking.findById(bookingId)
+    .populate('vehicle', 'vehicleNumber vehicleType')
+    .populate('parkingSlot', 'slotNumber vehicleType');
+
+  if (!booking) {
+    throw ApiError.notFound('Booking not found');
+  }
+
+  if (booking.status !== 'CONFIRMED') {
+    throw ApiError.badRequest('Only confirmed bookings can be reassigned');
+  }
+
+  if (booking.endTime <= new Date()) {
+    throw ApiError.badRequest('Cannot reassign a booking that has already ended');
+  }
+
+  if (booking.parkingSlot?._id?.toString() === targetSlotId) {
+    throw ApiError.badRequest('Booking is already assigned to this parking slot');
+  }
+
+  const lockToken = randomUUID();
+  const lockTime = new Date();
+  const lockExpiry = new Date(lockTime.getTime() + 2 * 60 * 1000);
+
+  const targetSlot = await ParkingSlot.findOneAndUpdate(
+    {
+      _id: targetSlotId,
+      status: 'ACTIVE',
+      $or: [
+        { bookingLockUntil: null },
+        { bookingLockUntil: { $lte: lockTime } },
+      ],
+    },
+    {
+      $set: {
+        bookingLockToken: lockToken,
+        bookingLockUntil: lockExpiry,
+      },
+    },
+    { new: true },
+  );
+
+  if (!targetSlot) {
+    const existingTarget = await ParkingSlot.findById(targetSlotId);
+
+    if (!existingTarget) {
+      throw ApiError.notFound('Replacement parking slot not found');
+    }
+
+    if (existingTarget.status !== 'ACTIVE') {
+      throw ApiError.badRequest('Replacement parking slot must be active');
+    }
+
+    throw ApiError.conflict(
+      'Replacement parking slot is currently processing another operation. Try again.',
+    );
+  }
+
+  try {
+    if (booking.vehicle?.vehicleType !== targetSlot.vehicleType) {
+      throw ApiError.badRequest(
+        'Replacement slot vehicle type does not match the booking vehicle',
+      );
+    }
+
+    const overlappingBooking = await Booking.findOne({
+      _id: { $ne: booking._id },
+      parkingSlot: targetSlotId,
+      status: 'CONFIRMED',
+      startTime: { $lt: booking.endTime },
+      endTime: { $gt: booking.startTime },
+    });
+
+    if (overlappingBooking) {
+      throw ApiError.conflict(
+        'Replacement slot already has an overlapping confirmed booking for this time window',
+      );
+    }
+
+    // Update only the parkingSlot reference, preserving ID, times, pricing, and qrTokenHash.
+    const updatedBooking = await Booking.findByIdAndUpdate(
+      booking._id,
+      { $set: { parkingSlot: targetSlotId } },
+      { new: true },
+    )
+      .populate('customer', 'name email')
+      .populate('vehicle', 'vehicleNumber vehicleType')
+      .populate('parkingSlot', 'slotNumber vehicleType');
+
+    return updatedBooking;
+  } finally {
+    await ParkingSlot.updateOne(
+      {
+        _id: targetSlotId,
+        bookingLockToken: lockToken,
+      },
+      {
+        $unset: {
+          bookingLockToken: 1,
+          bookingLockUntil: 1,
+        },
+      },
+    );
+  }
+};
+
 export default {
   createBooking,
   getMyBookings,
@@ -362,6 +611,8 @@ export default {
   cancelBooking,
   generateBookingQr,
   scanBookingQr,
+  releaseBookingEarly,
   getAllBookings,
   getAdminBookingById,
+  reassignBooking,
 };

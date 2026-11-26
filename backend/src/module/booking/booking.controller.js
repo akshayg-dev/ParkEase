@@ -51,7 +51,25 @@ const scanBookingQr = async (req, res, next) => {
     return ApiResponse.ok(
       res,
       `Booking ${result.action.toLowerCase()} recorded successfully`,
-      { booking: result.booking },
+      {
+        booking: result.booking,
+        action: result.action,
+        isEarlyExit: Boolean(result.isEarlyExit),
+      },
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+const releaseBookingEarly = async (req, res, next) => {
+  try {
+    const booking = await bookingService.releaseBookingEarly(req.params.id);
+
+    return ApiResponse.ok(
+      res,
+      'Remaining booking reservation released successfully',
+      { booking },
     );
   } catch (error) {
     next(error);
@@ -78,6 +96,19 @@ const getAdminBookingById = async (req, res, next) => {
   }
 };
 
+const reassignBooking = async (req, res, next) => {
+  try {
+    const booking = await bookingService.reassignBooking(
+      req.params.id,
+      req.body.targetSlotId,
+    );
+
+    return ApiResponse.ok(res, 'Booking reassigned successfully', { booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export {
   createBooking,
   getMyBookings,
@@ -85,6 +116,8 @@ export {
   cancelBooking,
   generateBookingQr,
   scanBookingQr,
+  releaseBookingEarly,
   getAllBookings,
   getAdminBookingById,
+  reassignBooking,
 };

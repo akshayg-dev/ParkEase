@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   CalendarCheck,
   CalendarPlus,
@@ -9,6 +10,7 @@ import {
   RefreshCw,
   Copy,
   Check,
+  X,
 } from 'lucide-react'
 import {
   cancelBooking,
@@ -22,9 +24,36 @@ import { Badge } from '@/components/Badge'
 import { Spinner } from '@/components/Spinner'
 import { EmptyState } from '@/components/EmptyState'
 import { cn, formatCurrency, formatDateTime } from '@/utils/format'
-import { formatVehicleType, getBookingStatusMeta } from '@/utils/parking'
+import {
+  formatVehicleType,
+  getBookingGateSessions,
+  getBookingStatusMeta,
+  isBookingCheckedIn,
+  isBookingRetainedAfterExit,
+} from '@/utils/parking'
 
-const FILTERS = ['ALL', 'CONFIRMED', 'COMPLETED', 'CANCELLED']
+const FILTERS = [
+  { key: 'ALL', label: 'All' },
+  { key: 'CONFIRMED', label: 'Confirmed' },
+  { key: 'COMPLETED', label: 'Completed' },
+  { key: 'EARLY_RELEASED', label: 'Early Released' },
+  { key: 'CANCELLED', label: 'Cancelled' },
+]
+
+function getQrModeForBooking(booking, loadedAt) {
+  if (isBookingCheckedIn(booking)) return 'EXIT'
+  if (isBookingRetainedAfterExit(booking, loadedAt)) return 'REENTRY'
+  if (booking.status === 'CONFIRMED' && !booking.entryAt && !booking.exitAt) {
+    return 'ENTRY'
+  }
+  return null
+}
+
+function getQrButtonLabel(mode) {
+  if (mode === 'EXIT') return 'Exit QR'
+  if (mode === 'REENTRY') return 'Re-entry QR'
+  return 'Entry QR'
+}
 
 export function MyBookingsPage() {
   const navigate = useNavigate()
@@ -35,7 +64,7 @@ export function MyBookingsPage() {
   const [loading, setLoading]     = useState(true)
   const [error, setError]         = useState('')
   const [busyId, setBusyId]       = useState('')
-  const [qrResult, setQrResult]   = useState(null)
+  const [qrPass, setQrPass]       = useState(null)
   const [copied, setCopied]       = useState(false)
 
   const isMountedRef = useRef(true)
@@ -87,7 +116,7 @@ export function MyBookingsPage() {
       if (!isMountedRef.current) return
       setBookings(list)
       setLoadedAt(Date.now())
-      if (qrResult?.bookingId === id) setQrResult(null)
+      if (qrPass?.booking?._id === id) setQrPass(null)
     } catch (err) {
       if (isMountedRef.current) setError(err.message ?? 'Unable to cancel booking.')
     } finally {
@@ -95,24 +124,32 @@ export function MyBookingsPage() {
     }
   }
 
-  const handleGenerateQr = async (id) => {
-    setBusyId(id)
+  const handleGenerateQr = async (booking, mode) => {
+    setBusyId(booking._id)
     setError('')
     setCopied(false)
     try {
-      const result = await generateBookingQr(id)
-      if (isMountedRef.current) setQrResult(result)
+      const result = await generateBookingQr(booking._id)
+      if (isMountedRef.current) {
+        setQrPass({
+          qrToken: result.qrToken,
+          booking,
+          mode,
+        })
+      }
     } catch (err) {
-      if (isMountedRef.current) setError(err.message ?? 'Unable to generate entry QR.')
+      if (isMountedRef.current) {
+        setError(err.message ?? 'Unable to generate booking QR.')
+      }
     } finally {
       if (isMountedRef.current) setBusyId('')
     }
   }
 
   const handleCopyToken = async () => {
-    if (!qrResult?.qrToken) return
+    if (!qrPass?.qrToken) return
     try {
-      await navigator.clipboard.writeText(qrResult.qrToken)
+      await navigator.clipboard.writeText(qrPass.qrToken)
       setCopied(true)
     } catch {
       // Ignore clipboard failures cleanly
@@ -132,7 +169,7 @@ export function MyBookingsPage() {
             My Bookings
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Review your reservations, generate entry/exit passes, or cancel upcoming bookings.
+            Review your reservations, generate entry/exit/re-entry passes, and view gate activity.
           </p>
         </div>
 
@@ -166,42 +203,9 @@ export function MyBookingsPage() {
         </Card>
       )}
 
-      {/* Active QR Pass Output */}
-      {qrResult && (
-        <Card className="border-teal-200 bg-teal-50/40">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-navy-900">
-                Entry / Exit QR Token Generated
-              </p>
-              <p className="mt-1 text-xs font-mono text-text-secondary break-all">
-                {qrResult.qrToken}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button
-                variant="secondary"
-                size="sm"
-                leftIcon={copied ? <Check /> : <Copy />}
-                onClick={handleCopyToken}
-              >
-                {copied ? 'Copied' : 'Copy token'}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setQrResult(null)}
-              >
-                Dismiss
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
       {/* Filter Tabs */}
       <div className="flex flex-wrap gap-1.5">
-        {FILTERS.map((key) => (
+        {FILTERS.map(({ key, label }) => (
           <button
             key={key}
             type="button"
@@ -213,7 +217,7 @@ export function MyBookingsPage() {
                 : 'bg-white text-text-secondary border-border hover:bg-surface-muted hover:text-text-primary',
             )}
           >
-            {key === 'ALL' ? 'All' : key.charAt(0) + key.slice(1).toLowerCase()}
+            {label}
           </button>
         ))}
       </div>
@@ -231,7 +235,7 @@ export function MyBookingsPage() {
             description={
               filter === 'ALL'
                 ? 'You have not made any parking reservations yet.'
-                : `You have no ${filter.toLowerCase()} bookings.`
+                : 'No bookings match this filter.'
             }
             action={
               filter === 'ALL' ? (
@@ -250,73 +254,201 @@ export function MyBookingsPage() {
         ) : (
           <div className="divide-y divide-border">
             {filteredBookings.map((booking) => {
-              const badge = getBookingStatusMeta(booking)
+              const badge = getBookingStatusMeta(booking, loadedAt)
+              const sessions = getBookingGateSessions(booking)
               const canCancel =
                 booking.status === 'CONFIRMED' &&
+                !booking.entryAt &&
+                sessions.length === 0 &&
                 new Date(booking.startTime).getTime() > loadedAt
-              const canGenerateQr =
-                booking.status === 'CONFIRMED' && !booking.entryAt && !booking.exitAt
+              const qrMode = getQrModeForBooking(booking, loadedAt)
               const isBusy = busyId === booking._id
 
               return (
                 <div
                   key={booking._id}
-                  className="px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  className="px-5 py-4 flex flex-col gap-3"
                 >
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold font-display text-navy-900">
-                        Slot {booking.parkingSlot?.slotNumber ?? '—'}
-                      </span>
-                      <Badge label={badge.label} variant={badge.variant} />
-                      <span className="text-xs text-text-tertiary">
-                        {booking.vehicle?.vehicleNumber ?? '—'} (
-                        {formatVehicleType(booking.vehicle?.vehicleType)})
-                      </span>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-col gap-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold font-display text-navy-900">
+                          Slot {booking.parkingSlot?.slotNumber ?? '—'}
+                        </span>
+                        <Badge label={badge.label} variant={badge.variant} />
+                        <span className="text-xs text-text-tertiary">
+                          {booking.vehicle?.vehicleNumber ?? '—'} (
+                          {formatVehicleType(booking.vehicle?.vehicleType)})
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-text-secondary">
+                        {formatDateTime(booking.startTime)} → {formatDateTime(booking.endTime)} ·{' '}
+                        {booking.durationHours}h ·{' '}
+                        <span className="font-semibold text-text-primary">
+                          {formatCurrency(booking.totalPrice)}
+                        </span>
+                      </p>
+
+                      {booking.status === 'EARLY_RELEASED' && booking.releasedAt && (
+                        <p className="text-[11px] text-text-tertiary">
+                          Remaining slot time released on {formatDateTime(booking.releasedAt)}
+                        </p>
+                      )}
                     </div>
 
-                    <p className="text-xs text-text-secondary">
-                      {formatDateTime(booking.startTime)} → {formatDateTime(booking.endTime)} ·{' '}
-                      {booking.durationHours}h ·{' '}
-                      <span className="font-semibold text-text-primary">
-                        {formatCurrency(booking.totalPrice)}
-                      </span>
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      {qrMode && (
+                        <Button
+                          variant={qrMode === 'ENTRY' ? 'secondary' : 'primary'}
+                          size="sm"
+                          leftIcon={<QrCode />}
+                          loading={isBusy}
+                          disabled={Boolean(busyId)}
+                          onClick={() => handleGenerateQr(booking, qrMode)}
+                        >
+                          {getQrButtonLabel(qrMode)}
+                        </Button>
+                      )}
+                      {canCancel && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          leftIcon={<XCircle />}
+                          loading={isBusy}
+                          disabled={Boolean(busyId)}
+                          onClick={() => handleCancel(booking._id)}
+                          className="text-text-secondary hover:text-error hover:bg-red-50"
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {canGenerateQr && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        leftIcon={<QrCode />}
-                        loading={isBusy}
-                        disabled={Boolean(busyId)}
-                        onClick={() => handleGenerateQr(booking._id)}
-                      >
-                        Entry QR
-                      </Button>
-                    )}
-                    {canCancel && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        leftIcon={<XCircle />}
-                        loading={isBusy}
-                        disabled={Boolean(busyId)}
-                        onClick={() => handleCancel(booking._id)}
-                        className="text-text-secondary hover:text-error hover:bg-red-50"
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
+                  {/* Gate Activity History */}
+                  {sessions.length > 0 && (
+                    <div className="rounded-md border border-border bg-surface-subtle px-3.5 py-2.5">
+                      <p className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider mb-1.5">
+                        Gate Activity
+                      </p>
+                      <div className="flex flex-col gap-1">
+                        {sessions.map((session, idx) => (
+                          <div
+                            key={`${booking._id}-session-${idx}`}
+                            className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-secondary"
+                          >
+                            <span className="font-medium text-navy-800">
+                              Cycle {idx + 1}:
+                            </span>
+                            <span>In {formatDateTime(session.entryAt)}</span>
+                            <span>
+                              ·{' '}
+                              {session.exitAt
+                                ? `Out ${formatDateTime(session.exitAt)}`
+                                : 'Currently parked'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
         )}
       </Card>
+
+      {/* ── Scannable Entry / Exit / Re-entry QR Pass Modal ──────────── */}
+      {qrPass && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/45"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="qr-pass-modal-title"
+        >
+          <Card noPadding className="w-full max-w-md shadow-modal overflow-hidden">
+            <Card.Header>
+              <div>
+                <h2
+                  id="qr-pass-modal-title"
+                  className="text-base font-semibold font-display text-navy-900"
+                >
+                  {qrPass.mode === 'EXIT'
+                    ? 'Exit QR Pass'
+                    : qrPass.mode === 'REENTRY'
+                      ? 'Re-entry QR Pass'
+                      : 'Entry QR Pass'}
+                </h2>
+                <p className="text-xs text-text-tertiary mt-0.5">
+                  {qrPass.mode === 'EXIT'
+                    ? 'Present this QR code to the exit gate scanner'
+                    : qrPass.mode === 'REENTRY'
+                      ? 'Your reservation is retained — scan at the entry gate to re-enter'
+                      : 'Present this QR code to the entry gate scanner on arrival'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrPass(null)}
+                aria-label="Close QR pass"
+                className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-muted transition-base cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </Card.Header>
+
+            <Card.Body className="flex flex-col items-center text-center gap-4 py-6">
+              <div className="p-4 rounded-lg bg-white border border-border shadow-card">
+                <QRCodeSVG
+                  value={qrPass.qrToken}
+                  size={200}
+                  level="M"
+                  bgColor="#ffffff"
+                  fgColor="#0d1e30"
+                />
+              </div>
+
+              <div className="w-full rounded-md border border-border bg-surface-subtle px-4 py-3 text-left">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold font-display text-navy-900">
+                    Slot {qrPass.booking.parkingSlot?.slotNumber ?? '—'}
+                  </span>
+                  <span className="text-xs font-medium text-text-secondary">
+                    {qrPass.booking.vehicle?.vehicleNumber ?? '—'}
+                  </span>
+                </div>
+                <p className="text-xs text-text-tertiary mt-1">
+                  {formatDateTime(qrPass.booking.startTime)} →{' '}
+                  {formatDateTime(qrPass.booking.endTime)}
+                </p>
+              </div>
+
+              <div className="w-full flex flex-col items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={copied ? <Check /> : <Copy />}
+                  onClick={handleCopyToken}
+                  className="w-full"
+                >
+                  {copied ? 'Token copied' : 'Copy fallback token'}
+                </Button>
+                <p className="text-[11px] font-mono text-text-disabled break-all px-2">
+                  {qrPass.qrToken}
+                </p>
+              </div>
+            </Card.Body>
+
+            <Card.Footer>
+              <Button variant="primary" size="sm" onClick={() => setQrPass(null)}>
+                Done
+              </Button>
+            </Card.Footer>
+          </Card>
+        </div>
+      )}
     </PageContainer>
   )
 }

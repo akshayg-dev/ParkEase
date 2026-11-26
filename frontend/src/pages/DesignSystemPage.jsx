@@ -1,5 +1,5 @@
 import {
-  ParkingSquare,
+  MapPin,
   Search,
   ArrowRight,
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/Button'
 import { Input } from '@/components/Input'
 import { Card } from '@/components/Card'
+import { ParkEaseLogo } from '@/components/ParkEaseLogo'
 import { Spinner, PageLoader } from '@/components/Spinner'
 import { PageContainer } from '@/components/PageContainer'
 
@@ -122,17 +123,23 @@ export function DesignSystemPage() {
     <PageContainer>
       {/* Page header */}
       <div className="mb-10">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="flex items-center justify-center size-10 rounded-lg bg-navy-800 text-white">
-            <ParkingSquare size={20} strokeWidth={1.75} />
-          </span>
-          <div>
-            <h1 className="text-2xl font-bold font-display text-text-primary leading-none">
-              ParkEase
-            </h1>
-            <p className="text-sm text-text-tertiary mt-0.5">
-              Design System — Phase 1 Foundation
-            </p>
+        <div className="mb-3">
+          <ParkEaseLogo
+            variant="full"
+            subtitle="Design System — Phase 1 Foundation"
+            size="lg"
+          />
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <div className="px-4 py-2.5 rounded-md border border-border bg-white">
+            <ParkEaseLogo variant="compact" theme="light" size="md" />
+          </div>
+          <div className="px-4 py-2.5 rounded-md bg-navy-900">
+            <ParkEaseLogo variant="full" theme="dark" size="sm" />
+          </div>
+          <div className="px-4 py-2.5 rounded-md bg-navy-900">
+            <ParkEaseLogo variant="compact" theme="dark" size="md" />
           </div>
         </div>
 
@@ -259,7 +266,7 @@ export function DesignSystemPage() {
         {/* ── Buttons ──────────────────────────────────────────────── */}
         <Section
           title="Buttons"
-          description="Four variants × three sizes. All include focus-visible rings."
+          description="Consistent variants × three sizes. All include focus-visible rings."
         >
           <div className="flex flex-col gap-6">
             {/* Variants */}
@@ -267,7 +274,9 @@ export function DesignSystemPage() {
               <p className="text-xs text-text-disabled mb-3">Variants (md size)</p>
               <div className="flex flex-wrap gap-3 items-center">
                 <Button variant="primary">Primary</Button>
+                <Button variant="emerald">Emerald</Button>
                 <Button variant="secondary">Secondary</Button>
+                <Button variant="outline">Outline</Button>
                 <Button variant="ghost">Ghost</Button>
                 <Button variant="danger">Danger</Button>
                 <Button variant="primary" disabled>Disabled</Button>
@@ -366,7 +375,7 @@ export function DesignSystemPage() {
               label="Total slots"
               value="240"
               sublabel="Across all zones"
-              icon={ParkingSquare}
+              icon={MapPin}
               trend="Synced 2 min ago"
             />
             <StatCard

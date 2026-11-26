@@ -1,7 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { RootLayout } from '@/layouts/RootLayout'
 import { CustomerDashboardLayout } from '@/layouts/CustomerDashboardLayout'
-import { CustomerGuard, GuestGuard, RootEntry } from '@/routes/guards'
+import { AdminDashboardLayout } from '@/layouts/AdminDashboardLayout'
+import { AdminGuard, CustomerGuard, GuestGuard, RootEntry } from '@/routes/guards'
 import { DesignSystemPage } from '@/pages/DesignSystemPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { RegisterPage } from '@/pages/auth/RegisterPage'
@@ -13,20 +14,25 @@ import { BookParkingPage } from '@/pages/dashboard/BookParkingPage'
 import { MyVehiclesPage } from '@/pages/dashboard/MyVehiclesPage'
 import { MyBookingsPage } from '@/pages/dashboard/MyBookingsPage'
 import { ProfilePage } from '@/pages/dashboard/ProfilePage'
+import { AdminOverviewPage } from '@/pages/admin/AdminOverviewPage'
+import { AdminParkingSlotsPage } from '@/pages/admin/AdminParkingSlotsPage'
+import { AdminBookingsPage } from '@/pages/admin/AdminBookingsPage'
+import { AdminQrScanPage } from '@/pages/admin/AdminQrScanPage'
 
 /**
  * Application route tree.
  *
- * /               — RootEntry (customer → /dashboard, guest → /login, admin → holding screen)
+ * /               — RootEntry (customer → /dashboard, admin → /admin, guest → /login)
  * /login, /register, /forgot-password, /reset-password (+ /auth/* aliases)
- *                 — guest-only; authenticated customers redirect to /dashboard
+ *                 — guest-only; authenticated users redirect to role dashboard
  * /dashboard/*    — customer-only (CustomerGuard + CustomerDashboardLayout)
+ * /admin/*        — admin-only (AdminGuard + AdminDashboardLayout)
  * /design-system  — design system showcase preserved for development
  */
 export function AppRoutes() {
   return (
     <Routes>
-      {/* ── Root entry (replaces DesignSystemPage as default landing) ── */}
+      {/* ── Root entry ────────────────────────────────────────────────── */}
       <Route path="/" element={<RootEntry />} />
 
       {/* ── Auth routes (guest only) ──────────────────────────────────── */}
@@ -55,6 +61,16 @@ export function AppRoutes() {
           <Route path="vehicles" element={<MyVehiclesPage />} />
           <Route path="bookings" element={<MyBookingsPage />} />
           <Route path="profile" element={<ProfilePage />} />
+        </Route>
+      </Route>
+
+      {/* ── Admin portal (authenticated admins only) ──────────────────── */}
+      <Route element={<AdminGuard />}>
+        <Route path="/admin" element={<AdminDashboardLayout />}>
+          <Route index element={<AdminOverviewPage />} />
+          <Route path="slots" element={<AdminParkingSlotsPage />} />
+          <Route path="bookings" element={<AdminBookingsPage />} />
+          <Route path="scan" element={<AdminQrScanPage />} />
         </Route>
       </Route>
 

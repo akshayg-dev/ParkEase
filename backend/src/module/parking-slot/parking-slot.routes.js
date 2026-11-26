@@ -13,9 +13,15 @@ const router = Router();
 
 // Customer + Admin
 router.get('/', authenticate, parkingSlotController.getSlots);
-router.get('/:id', authenticate, parkingSlotController.getSlotById);
 
 // Admin only
+router.get(
+  '/:id/maintenance-check',
+  authenticate,
+  authorizeAdmin,
+  parkingSlotController.getMaintenanceCheck,
+);
+
 router.post(
   '/',
   authenticate,
@@ -37,5 +43,7 @@ router.get(
   authenticate,
   parkingSlotController.getAvailableSlots,
 );
+
+router.get('/:id', authenticate, parkingSlotController.getSlotById);
 
 export default router;

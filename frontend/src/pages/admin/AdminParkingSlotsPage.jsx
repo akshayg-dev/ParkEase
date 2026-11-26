@@ -8,12 +8,16 @@ import {
   CheckCircle2,
   Wrench,
   Power,
+  X,
+  ArrowRightLeft,
 } from 'lucide-react'
 import {
   createParkingSlot,
   getParkingSlots,
+  getSlotMaintenanceCheck,
   updateParkingSlot,
 } from '@/services/parkingSlot.service'
+import { reassignBookingSlot } from '@/services/booking.service'
 import { PageContainer } from '@/components/PageContainer'
 import { Card } from '@/components/Card'
 import { Button } from '@/components/Button'
@@ -21,7 +25,7 @@ import { Input } from '@/components/Input'
 import { Badge } from '@/components/Badge'
 import { Spinner } from '@/components/Spinner'
 import { EmptyState } from '@/components/EmptyState'
-import { cn } from '@/utils/format'
+import { cn, formatDateTime } from '@/utils/format'
 import { formatVehicleType } from '@/utils/parking'
 
 const STATUS_FILTERS = ['ALL', 'ACTIVE', 'MAINTENANCE']
@@ -33,8 +37,8 @@ function getSlotStatusBadge(status) {
 }
 
 /**
- * AdminParkingSlotsPage — list, filter, create, and toggle status of parking slots.
- * Integrates GET /api/parking-slots, POST /api/parking-slots, PATCH /api/parking-slots/:id.
+ * AdminParkingSlotsPage — list, filter, create, toggle status, and handle
+ * booking reassignment when moving a slot with confirmed bookings to MAINTENANCE.
  */
 export function AdminParkingSlotsPage() {
   const [slots, setSlots]             = useState([])
@@ -43,9 +47,9 @@ export function AdminParkingSlotsPage() {
   const [successMsg, setSuccessMsg]   = useState('')
 
   // Filters
-  const [statusFilter, setStatusFilter]   = useState('ALL')
-  const [typeFilter, setTypeFilter]       = useState('ALL')
-  const [searchQuery, setSearchQuery]     = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [typeFilter, setTypeFilter]     = useState('ALL')
+  const [searchQuery, setSearchQuery]   = useState('')
 
   // Create form
   const [slotNumber, setSlotNumber]   = useState('')
@@ -55,6 +59,12 @@ export function AdminParkingSlotsPage() {
 
   // Per-slot status update lock
   const [updatingId, setUpdatingId]   = useState('')
+
+  // Maintenance conflict + reassignment modal state
+  const [conflictModal, setConflictModal] = useState(null)
+  // { slot, conflicts: [{ booking, eligibleSlots }], error: '', loading: false }
+  const [targetSelections, setTargetSelections] = useState({})
+  const [reassigningId, setReassigningId]       = useState('')
 
   const isMountedRef = useRef(true)
 
@@ -92,6 +102,14 @@ export function AdminParkingSlotsPage() {
     } finally {
       if (isMountedRef.current) setLoading(false)
     }
+  }, [])
+
+  const seedTargetSelections = useCallback((conflicts) => {
+    const next = {}
+    for (const item of conflicts) {
+      next[item.booking._id] = item.eligibleSlots[0]?._id ?? ''
+    }
+    setTargetSelections(next)
   }, [])
 
   const handleCreateSlot = async (e) => {
@@ -152,11 +170,91 @@ export function AdminParkingSlotsPage() {
         `Slot ${updated.slotNumber} updated to ${nextStatus === 'ACTIVE' ? 'Active' : 'Maintenance'}.`,
       )
     } catch (err) {
-      if (isMountedRef.current) {
+      if (!isMountedRef.current) return
+
+      if (err.status === 409 && Array.isArray(err.data?.conflicts)) {
+        seedTargetSelections(err.data.conflicts)
+        setConflictModal({
+          slot,
+          conflicts: err.data.conflicts,
+          error: '',
+          loading: false,
+        })
+      } else {
         setError(err.message ?? 'Unable to update slot status.')
       }
     } finally {
       if (isMountedRef.current) setUpdatingId('')
+    }
+  }
+
+  const handleReassignBooking = async (bookingId) => {
+    if (!conflictModal) return
+    const targetSlotId = targetSelections[bookingId]
+    if (!targetSlotId) return
+
+    setReassigningId(bookingId)
+    setConflictModal((prev) => (prev ? { ...prev, error: '' } : null))
+
+    try {
+      await reassignBookingSlot(bookingId, targetSlotId)
+      const checkResult = await getSlotMaintenanceCheck(conflictModal.slot._id)
+      if (!isMountedRef.current) return
+
+      seedTargetSelections(checkResult.conflicts)
+      setConflictModal({
+        slot: checkResult.slot,
+        conflicts: checkResult.conflicts,
+        error: '',
+        loading: false,
+      })
+    } catch (err) {
+      if (!isMountedRef.current) return
+      setConflictModal((prev) =>
+        prev ? { ...prev, error: err.message ?? 'Unable to reassign booking.' } : null,
+      )
+    } finally {
+      if (isMountedRef.current) setReassigningId('')
+    }
+  }
+
+  const handleCompleteMaintenance = async () => {
+    if (!conflictModal) return
+    const targetSlot = conflictModal.slot
+    setConflictModal((prev) => (prev ? { ...prev, loading: true, error: '' } : null))
+
+    try {
+      const updated = await updateParkingSlot(targetSlot._id, {
+        status: 'MAINTENANCE',
+      })
+      if (!isMountedRef.current) return
+
+      setSlots((prev) =>
+        prev.map((item) => (item._id === updated._id ? updated : item)),
+      )
+      setConflictModal(null)
+      setSuccessMsg(`Slot ${updated.slotNumber} updated to Maintenance.`)
+    } catch (err) {
+      if (!isMountedRef.current) return
+      if (err.status === 409 && Array.isArray(err.data?.conflicts)) {
+        seedTargetSelections(err.data.conflicts)
+        setConflictModal({
+          slot: targetSlot,
+          conflicts: err.data.conflicts,
+          error: err.message,
+          loading: false,
+        })
+      } else {
+        setConflictModal((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                error: err.message ?? 'Unable to set slot to maintenance.',
+              }
+            : null,
+        )
+      }
     }
   }
 
@@ -248,7 +346,6 @@ export function AdminParkingSlotsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Slots List */}
         <div className="lg:col-span-2 flex flex-col gap-4">
-          {/* Filter Controls */}
           <Card className="p-4 flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5">
@@ -293,7 +390,6 @@ export function AdminParkingSlotsPage() {
             />
           </Card>
 
-          {/* Table */}
           <Card noPadding>
             <Card.Header>
               <div>
@@ -457,6 +553,180 @@ export function AdminParkingSlotsPage() {
           </Card>
         </div>
       </div>
+
+      {/* ── Maintenance Conflict & Booking Reassignment Modal ──────── */}
+      {conflictModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/45"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="maint-conflict-title"
+        >
+          <Card noPadding className="w-full max-w-2xl max-h-[90vh] flex flex-col shadow-modal overflow-hidden">
+            <Card.Header>
+              <div>
+                <h2
+                  id="maint-conflict-title"
+                  className="text-base font-semibold font-display text-navy-900"
+                >
+                  Confirmed Bookings on Slot {conflictModal.slot.slotNumber}
+                </h2>
+                <p className="text-xs text-text-tertiary mt-0.5">
+                  Reassign all active and upcoming confirmed bookings before moving this slot to Maintenance.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConflictModal(null)}
+                aria-label="Close maintenance conflict dialog"
+                className="p-1.5 rounded-md text-text-tertiary hover:text-text-primary hover:bg-surface-muted transition-base cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </Card.Header>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+              {conflictModal.error && (
+                <div className="flex items-start gap-2.5 rounded-md border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700">
+                  <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                  <span>{conflictModal.error}</span>
+                </div>
+              )}
+
+              {conflictModal.conflicts.length === 0 ? (
+                <div className="flex items-start gap-2.5 rounded-md border border-teal-200 bg-teal-50 px-4 py-3.5 text-sm text-teal-800">
+                  <CheckCircle2 size={16} className="text-teal-600 mt-0.5 shrink-0" />
+                  <span>
+                    All conflicting bookings have been reassigned. Slot{' '}
+                    <strong>{conflictModal.slot.slotNumber}</strong> can now be moved to Maintenance.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start gap-2.5 rounded-md border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs text-amber-800">
+                    <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                    <span>
+                      {conflictModal.conflicts.length} confirmed booking
+                      {conflictModal.conflicts.length === 1 ? '' : 's'} currently reserve this slot.
+                      Reassigned bookings keep their existing booking ID, times, pricing, and QR pass.
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {conflictModal.conflicts.map(({ booking, eligibleSlots }) => {
+                      const selectedTarget = targetSelections[booking._id] ?? ''
+                      const isReassigning = reassigningId === booking._id
+                      const hasReplacement = eligibleSlots.length > 0
+
+                      return (
+                        <div
+                          key={booking._id}
+                          className="rounded-md border border-border bg-surface-subtle p-4 flex flex-col gap-3"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-navy-900">
+                                {booking.customer?.name ?? 'Customer'}{' '}
+                                <span className="font-normal text-text-tertiary">
+                                  ({booking.customer?.email ?? '—'})
+                                </span>
+                              </p>
+                              <p className="text-xs text-text-secondary mt-0.5">
+                                {booking.vehicle?.vehicleNumber ?? '—'} ·{' '}
+                                {formatVehicleType(booking.vehicle?.vehicleType)} ·{' '}
+                                {formatDateTime(booking.startTime)} →{' '}
+                                {formatDateTime(booking.endTime)}
+                              </p>
+                            </div>
+                            <Badge
+                              label={
+                                booking.entryAt && !booking.exitAt
+                                  ? 'Active Session'
+                                  : booking.exitAt
+                                    ? 'Reserved Until End'
+                                    : 'Upcoming'
+                              }
+                              variant={
+                                booking.entryAt && !booking.exitAt
+                                  ? 'teal'
+                                  : booking.exitAt
+                                    ? 'warning'
+                                    : 'navy'
+                              }
+                            />
+                          </div>
+
+                          {hasReplacement ? (
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-border">
+                              <select
+                                aria-label={`Select replacement slot for booking ${booking._id}`}
+                                value={selectedTarget}
+                                onChange={(e) =>
+                                  setTargetSelections((prev) => ({
+                                    ...prev,
+                                    [booking._id]: e.target.value,
+                                  }))
+                                }
+                                disabled={Boolean(reassigningId)}
+                                className="flex-1 h-9 rounded-md border border-border bg-white px-3 text-sm text-text-primary focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none"
+                              >
+                                {eligibleSlots.map((candidate) => (
+                                  <option key={candidate._id} value={candidate._id}>
+                                    Slot {candidate.slotNumber} ({formatVehicleType(candidate.vehicleType)})
+                                  </option>
+                                ))}
+                              </select>
+
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                leftIcon={<ArrowRightLeft />}
+                                loading={isReassigning}
+                                disabled={!selectedTarget || Boolean(reassigningId)}
+                                onClick={() => handleReassignBooking(booking._id)}
+                              >
+                                Reassign
+                              </Button>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-red-700 pt-2 border-t border-border">
+                              No eligible active {formatVehicleType(conflictModal.slot.vehicleType).toLowerCase()} replacement
+                              slot is free during this booking window. Maintenance cannot proceed until
+                              another compatible slot is available or this booking ends.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <Card.Footer>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setConflictModal(null)}
+                disabled={conflictModal.loading || Boolean(reassigningId)}
+              >
+                Close
+              </Button>
+              {conflictModal.conflicts.length === 0 && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Wrench />}
+                  loading={conflictModal.loading}
+                  onClick={handleCompleteMaintenance}
+                >
+                  Confirm Maintenance
+                </Button>
+              )}
+            </Card.Footer>
+          </Card>
+        </div>
+      )}
     </PageContainer>
   )
 }

@@ -20,6 +20,7 @@ const getDashboardStats = async () => {
     confirmedBookings,
     cancelledBookings,
     completedBookings,
+    earlyReleasedBookings,
     bookingsCreatedToday,
     currentlyParked,
   ] = await Promise.all([
@@ -32,6 +33,7 @@ const getDashboardStats = async () => {
     Booking.countDocuments({ status: 'CONFIRMED' }),
     Booking.countDocuments({ status: 'CANCELLED' }),
     Booking.countDocuments({ status: 'COMPLETED' }),
+    Booking.countDocuments({ status: 'EARLY_RELEASED' }),
 
     Booking.countDocuments({
       createdAt: {
@@ -41,7 +43,7 @@ const getDashboardStats = async () => {
     }),
 
     Booking.countDocuments({
-      status: 'CONFIRMED',
+      status: { $in: ['CONFIRMED', 'COMPLETED'] },
       entryAt: { $ne: null },
       exitAt: null,
     }),
@@ -60,6 +62,7 @@ const getDashboardStats = async () => {
       confirmed: confirmedBookings,
       cancelled: cancelledBookings,
       completed: completedBookings,
+      earlyReleased: earlyReleasedBookings,
       createdToday: bookingsCreatedToday,
     },
 

@@ -35,6 +35,20 @@ const getSlotById = async (req, res, next) => {
   }
 };
 
+const getMaintenanceCheck = async (req, res, next) => {
+  try {
+    const result = await parkingSlotService.getMaintenanceCheck(req.params.id);
+
+    return ApiResponse.ok(
+      res,
+      'Slot maintenance check completed successfully',
+      result,
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateSlot = async (req, res, next) => {
   try {
     const slot = await parkingSlotService.updateSlot(req.params.id, req.body);
@@ -63,6 +77,7 @@ export default {
   createSlot,
   getSlots,
   getSlotById,
+  getMaintenanceCheck,
   updateSlot,
   getAvailableSlots,
 };

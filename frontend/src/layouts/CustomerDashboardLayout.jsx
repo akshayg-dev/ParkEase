@@ -7,11 +7,12 @@ import {
   CalendarCheck,
   User,
   LogOut,
-  ParkingSquare,
   Menu,
   X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { ParkEaseLogo } from '@/components/ParkEaseLogo'
+import { getButtonClasses } from '@/utils/buttonStyles'
 import { cn } from '@/utils/format'
 
 const SIDEBAR_ITEMS = [
@@ -47,19 +48,9 @@ function SidebarContent({ user, onNavigate, onLogout, loggingOut, showClose, onC
         <NavLink
           to="/dashboard"
           onClick={onNavigate}
-          className="flex items-center gap-2.5 text-navy-900"
+          className="inline-flex items-center"
         >
-          <span className="flex items-center justify-center size-8 rounded-md bg-navy-800 text-white">
-            <ParkingSquare size={16} strokeWidth={2} />
-          </span>
-          <div className="flex flex-col">
-            <span className="font-display font-bold text-[0.9375rem] leading-none tracking-tight text-navy-900">
-              ParkEase
-            </span>
-            <span className="text-[11px] text-text-tertiary mt-0.5 leading-none">
-              Customer Portal
-            </span>
-          </div>
+          <ParkEaseLogo variant="full" subtitle="Customer Portal" size="md" />
         </NavLink>
 
         {showClose && (
@@ -88,7 +79,7 @@ function SidebarContent({ user, onNavigate, onLogout, loggingOut, showClose, onC
                 cn(
                   'group flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-base',
                   isActive
-                    ? 'bg-navy-50 text-navy-900'
+                    ? 'bg-navy-50 text-brand-navy font-semibold'
                     : 'text-text-secondary hover:bg-surface-muted hover:text-text-primary',
                 )
               }
@@ -101,7 +92,7 @@ function SidebarContent({ user, onNavigate, onLogout, loggingOut, showClose, onC
                     className={cn(
                       'shrink-0 transition-base',
                       isActive
-                        ? 'text-teal-600'
+                        ? 'text-emerald-600'
                         : 'text-text-tertiary group-hover:text-text-primary',
                     )}
                   />
@@ -219,9 +210,13 @@ export function CustomerDashboardLayout() {
           <div className="flex items-center gap-3 shrink-0">
             <NavLink
               to="/dashboard/book"
-              className="hidden sm:inline-flex items-center gap-1.5 h-8 px-3 rounded-md bg-teal-600 text-white text-xs font-medium hover:bg-teal-700 transition-base"
+              className={getButtonClasses({
+                variant: 'emerald',
+                size: 'sm',
+                className: 'h-8 sm:h-9 px-2.5 sm:px-3.5 text-[11px] sm:text-xs font-semibold gap-1.5',
+              })}
             >
-              <CalendarPlus size={14} />
+              <CalendarPlus size={15} strokeWidth={2} className="shrink-0" />
               <span>Book Parking</span>
             </NavLink>
           </div>

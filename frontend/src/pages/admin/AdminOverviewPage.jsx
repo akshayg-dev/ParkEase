@@ -131,7 +131,7 @@ export function AdminOverviewPage() {
             Refresh
           </Button>
           <Button
-            variant="primary"
+            variant="outline"
             size="md"
             leftIcon={<MapPin />}
             onClick={() => navigate('/admin/slots')}
@@ -164,9 +164,9 @@ export function AdminOverviewPage() {
 
       {/* ── Loading / Empty / Stats ─────────────────────────────────── */}
       {loading ? (
-        <Card className="py-14 flex flex-col items-center gap-3">
-          <Spinner size="lg" label="Loading admin statistics…" />
-          <p className="text-sm text-text-tertiary">Loading facility statistics…</p>
+        <Card className="py-14 flex flex-col items-center justify-center gap-3">
+          <Spinner size="lg" label="Preparing your parking overview..." />
+          <p className="text-sm text-text-tertiary">Preparing your parking overview...</p>
         </Card>
       ) : !stats ? (
         <Card>
@@ -293,6 +293,10 @@ export function AdminOverviewPage() {
                 <div className="px-5 py-3.5 flex items-center justify-between">
                   <span className="text-text-secondary">Completed bookings</span>
                   <Badge label={String(stats.bookings.completed)} variant="success" />
+                </div>
+                <div className="px-5 py-3.5 flex items-center justify-between">
+                  <span className="text-text-secondary">Early released bookings</span>
+                  <Badge label={String(stats.bookings.earlyReleased ?? 0)} variant="info" />
                 </div>
                 <div className="px-5 py-3.5 flex items-center justify-between">
                   <span className="text-text-secondary">Cancelled bookings</span>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ParkingSquare } from 'lucide-react'
+import { ParkEaseLogo } from '@/components/ParkEaseLogo'
 
 /**
  * AuthLayout — premium split-screen authentication shell.
@@ -18,16 +18,8 @@ export function AuthLayout({ children }) {
 
         {/* Top bar */}
         <div className="shrink-0 px-8 pt-8 pb-6">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2.5 text-navy-900 group"
-          >
-            <span className="flex items-center justify-center size-8 rounded-md bg-navy-800 text-white transition-base group-hover:bg-navy-700">
-              <ParkingSquare size={16} strokeWidth={2} />
-            </span>
-            <span className="font-display font-bold text-[0.9375rem] tracking-tight text-navy-900">
-              ParkEase
-            </span>
+          <Link to="/" className="inline-flex items-center">
+            <ParkEaseLogo variant="full" theme="light" size="md" />
           </Link>
         </div>
 
@@ -70,9 +62,13 @@ export function AuthLayout({ children }) {
               "Parking management that gets out of your way — so you can focus
               on what matters."
             </p>
-            <footer className="mt-4">
-              <p className="text-white/60 text-sm font-medium">ParkEase Platform</p>
-              <p className="text-white/40 text-xs mt-0.5">Premium facility management</p>
+            <footer className="mt-5">
+              <ParkEaseLogo
+                variant="full"
+                theme="dark"
+                size="sm"
+                subtitle="Smart facility management"
+              />
             </footer>
           </blockquote>
 

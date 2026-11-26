@@ -46,3 +46,14 @@ export async function updateParkingSlot(id, data) {
   // 200 — { success: true, message, data: { slot } }
   return res.data.data?.slot
 }
+
+/**
+ * Inspect whether a parking slot has active/upcoming confirmed bookings
+ * blocking maintenance, along with eligible replacement slots per conflict.
+ * @param {string} id
+ * @returns {Promise<{ slot: object, conflicts: Array<{ booking: object, eligibleSlots: Array<object> }> }>}
+ */
+export async function getSlotMaintenanceCheck(id) {
+  const res = await api.get(`/parking-slots/${id}/maintenance-check`)
+  return res.data.data
+}

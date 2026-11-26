@@ -83,7 +83,10 @@ export function AuthProvider({ children }) {
 
         const message =
           error.response?.data?.message ?? error.message ?? 'An unexpected error occurred.'
-        return Promise.reject(new Error(message))
+        const normalizedError = new Error(message)
+        normalizedError.status = error.response?.status ?? null
+        normalizedError.data = error.response?.data?.data ?? null
+        return Promise.reject(normalizedError)
       },
     )
 

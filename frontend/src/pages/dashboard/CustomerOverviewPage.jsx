@@ -217,7 +217,9 @@ export function CustomerOverviewPage() {
                 <p className="text-xs text-text-tertiary">Ongoing parking session</p>
               </div>
             </div>
-            {activeBooking && <Badge {...getBookingStatusMeta(activeBooking)} />}
+            {activeBooking && (
+              <Badge {...getBookingStatusMeta(activeBooking, loadedAt)} />
+            )}
           </Card.Header>
 
           <Card.Body className="flex-1 flex flex-col justify-between">
@@ -344,7 +346,7 @@ export function CustomerOverviewPage() {
                       <span className="text-xs font-semibold text-text-primary">
                         {formatCurrency(booking.totalPrice)}
                       </span>
-                      <Badge {...getBookingStatusMeta(booking)} />
+                      <Badge {...getBookingStatusMeta(booking, loadedAt)} />
                     </div>
                   </div>
                 ))}
@@ -608,7 +610,7 @@ export function CustomerOverviewPage() {
               </thead>
               <tbody className="divide-y divide-border text-sm">
                 {recentBookings.map((booking) => {
-                  const badge = getBookingStatusMeta(booking)
+                  const badge = getBookingStatusMeta(booking, loadedAt)
                   return (
                     <tr
                       key={booking._id}

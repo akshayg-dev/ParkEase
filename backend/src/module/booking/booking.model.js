@@ -1,5 +1,19 @@
 import mongoose from 'mongoose';
 
+const gateSessionSchema = new mongoose.Schema(
+  {
+    entryAt: {
+      type: Date,
+      required: true,
+    },
+    exitAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     customer: {
@@ -48,17 +62,29 @@ const bookingSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ['CONFIRMED', 'CANCELLED', 'COMPLETED'],
+      enum: ['CONFIRMED', 'CANCELLED', 'COMPLETED', 'EARLY_RELEASED'],
       default: 'CONFIRMED',
       required: true,
     },
 
+    // Latest cycle timestamps (preserved for backward compatibility and quick queries)
     entryAt: {
       type: Date,
       default: null,
     },
 
     exitAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Full chronological list of ENTRY/EXIT cycles for this booking
+    gateSessions: {
+      type: [gateSessionSchema],
+      default: [],
+    },
+
+    releasedAt: {
       type: Date,
       default: null,
     },
