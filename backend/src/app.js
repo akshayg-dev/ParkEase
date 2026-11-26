@@ -34,16 +34,6 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// Enable only when your frontend uses a different origin.
-if (process.env.FRONTEND_URL) {
-  app.use(
-    cors({
-      origin: process.env.FRONTEND_URL,
-      credentials: true,
-    }),
-  );
-}
-
 app.use('/api/auth', authRoutes);
 app.use('/api/vehicles', vehicleRoutes);
 app.use('/api/parking-slots', parkingSlotRoutes);
