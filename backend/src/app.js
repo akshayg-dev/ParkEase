@@ -24,12 +24,18 @@ const allowedOrigins = (process.env.FRONTEND_URL || '')
 app.use(
   cors({
     origin: (origin, callback) => {
+      console.log('Request Origin:', origin);
+      console.log('Allowed Origins:', allowedOrigins);
+
       if (!origin || allowedOrigins.includes(origin.replace(/\/+$/, ''))) {
         return callback(null, true);
       }
 
+      console.error('CORS blocked origin:', origin);
+
       return callback(new Error(`CORS blocked origin: ${origin}`));
     },
+
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
