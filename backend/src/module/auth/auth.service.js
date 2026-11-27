@@ -274,10 +274,16 @@ const verifyEmail = async (token) => {
 
   const hashedToken = hashToken(token);
 
+  console.log('Received token:', token);
+  console.log('Hashed token:', hashedToken);
+  console.log('Current time:', new Date());
+
   const user = await User.findOne({
     verificationToken: hashedToken,
     verificationTokenExpires: { $gt: new Date() },
   });
+
+  console.log('Matched user:', user?._id || null);
 
   if (!user) {
     throw ApiError.unauthorized('Invalid or expired verification token');
