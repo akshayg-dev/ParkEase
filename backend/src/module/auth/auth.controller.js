@@ -2,10 +2,12 @@ import * as authService from './auth.service.js';
 import ApiResponse from '../../common/utils/api-response.js';
 
 // Shared refresh-token cookie configuration
+const isProd = process.env.NODE_ENV === 'production';
+
 const refreshCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'lax',
   path: '/',
   maxAge: 3 * 24 * 60 * 60 * 1000,
 };

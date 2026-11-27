@@ -11,6 +11,9 @@ import adminRoutes from './module/admin/admin.routes.js';
 
 const app = express();
 
+// Render sits behind a proxy; needed so secure cookies work over HTTPS
+app.set('trust proxy', 1);
+
 // Allowed frontend origins (supports comma-separated URLs)
 const allowedOrigins = (process.env.FRONTEND_URL || '')
   .split(',')
